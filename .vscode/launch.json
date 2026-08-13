@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Gaeul Desktop Pet",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/GaeulDesktopPet/bin/Debug/net8.0-windows/GaeulDesktopPet.exe",
+      "preLaunchTask": "build",
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false
+    }
+  ]
+}
