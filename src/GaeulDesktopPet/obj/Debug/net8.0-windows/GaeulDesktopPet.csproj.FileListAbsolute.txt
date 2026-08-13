@@ -148,3 +148,4 @@ E:\miniGaeul\miniGaeul\src\GaeulDesktopPet\bin\Debug\net8.0-windows\Assets\Sprit
 E:\miniGaeul\miniGaeul\src\GaeulDesktopPet\bin\Debug\net8.0-windows\Assets\Sprites\01_gaeul_kitsch\01_gaeul_move\move_right_f016.png
 E:\miniGaeul\miniGaeul\src\GaeulDesktopPet\bin\Debug\net8.0-windows\Assets\Sprites\01_gaeul_kitsch\01_gaeul_move\move_right_f017.png
 E:\miniGaeul\miniGaeul\src\GaeulDesktopPet\bin\Debug\net8.0-windows\Assets\Sprites\01_gaeul_kitsch\01_gaeul_move\move_right_f018.png
+E:\miniGaeul\miniGaeul\src\GaeulDesktopPet\obj\Debug\net8.0-windows\GaeulDesktopPet.sourcelink.json
