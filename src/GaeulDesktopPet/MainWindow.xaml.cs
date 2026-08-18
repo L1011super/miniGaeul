@@ -9,6 +9,8 @@ using FormsSystemInformation = System.Windows.Forms.SystemInformation;
 using WpfApplication = System.Windows.Application;
 using WpfMouseEventArgs = System.Windows.Input.MouseEventArgs;
 using WpfPoint = System.Windows.Point;
+using WpfRect = System.Windows.Rect;
+using WpfSize = System.Windows.Size;
 
 namespace GaeulDesktopPet;
 
@@ -17,6 +19,8 @@ public partial class MainWindow : Window
     private readonly SettingsService _settingsService = new();
     private readonly AnimationFrameCache _cache = new();
     private readonly SpriteAnimationPlayer _player;
+    private readonly WpfRect _idleCharacterBounds;
+    private readonly WpfSize _idleSpriteSize;
     private readonly RecentActionPicker _actionPicker = new();
     private readonly RandomActionScheduler _scheduler = new();
     private readonly TrayIconService _tray = new();
@@ -30,7 +34,7 @@ public partial class MainWindow : Window
     private WpfPoint _dragWindowOrigin;
     private bool _dragging;
     private bool _returningFromDrag;
-    private bool _rightWalking;
+    private int _walkingDirection;
     private int _dragDirection;
     private int _walkVerticalDirection;
     private double _walkHorizontalRemainder;
@@ -44,6 +48,13 @@ public partial class MainWindow : Window
         AnimationCatalog.ValidateAssets(assetRoot);
         _settings = _settingsService.Load();
         _player = new SpriteAnimationPlayer(assetRoot, _cache);
+        var idleFrame = _cache.Get(Path.Combine(assetRoot, AnimationCatalog.Idle.GetFrameRelativePath(0)));
+        _idleCharacterBounds = _cache.GetOpaqueBounds(idleFrame);
+        if (_idleCharacterBounds.IsEmpty)
+        {
+            throw new InvalidOperationException("Idle sprite must contain visible character pixels.");
+        }
+        _idleSpriteSize = new WpfSize(idleFrame.PixelWidth, idleFrame.PixelHeight);
         WireServices();
 
         Loaded += OnLoaded;
@@ -91,7 +102,7 @@ public partial class MainWindow : Window
         _fullscreen.FullscreenChanged += OnFullscreenChanged;
         _fullscreen.Start();
 
-        ApplySize();
+        ApplySize(preserveCharacterAnchor: false);
         if (_settings.Left.HasValue && _settings.Top.HasValue)
         {
             Left = _settings.Left.Value;
@@ -106,10 +117,32 @@ public partial class MainWindow : Window
         if (_settings.Hidden) HidePet(); else EnterDefaultAnimation();
     }
 
-    private void ApplySize()
+    private void ApplySize(bool preserveCharacterAnchor = true)
     {
+        var canPreserveCharacterAnchor =
+            preserveCharacterAnchor &&
+            double.IsFinite(Left) &&
+            double.IsFinite(Top) &&
+            Width > 0 &&
+            Height > 0;
+        var characterAnchor = canPreserveCharacterAnchor
+            ? ScreenService.CalculateCharacterAnchor(
+                new WpfRect(Left, Top, Width, Height),
+                _idleCharacterBounds,
+                _idleSpriteSize)
+            : default;
         var size = ScreenService.CalculateDefaultPetDipSize(this, _settings.SizeScale);
         Width = Height = size;
+        if (canPreserveCharacterAnchor)
+        {
+            var position = ScreenService.CalculateWindowPositionForCharacterAnchor(
+                characterAnchor,
+                _idleCharacterBounds,
+                _idleSpriteSize,
+                new WpfSize(size, size));
+            Left = position.X;
+            Top = position.Y;
+        }
         DragRotate.CenterX = DragRotate.CenterY = size / 2;
     }
 
@@ -147,9 +180,9 @@ public partial class MainWindow : Window
 
     private void OnNonLoopingCompleted()
     {
-        if (_rightWalking)
+        if (_walkingDirection != 0)
         {
-            _rightWalking = false;
+            _walkingDirection = 0;
             SavePosition();
         }
 
@@ -166,7 +199,30 @@ public partial class MainWindow : Window
     {
         _state = PetState.Interaction;
         _scheduler.Stop();
-        PlayAnimation(_actionPicker.Pick(AnimationCatalog.Interactions));
+        var selectedAction = _actionPicker.Pick(AnimationCatalog.RandomActions);
+        if (string.Equals(selectedAction.Name, AnimationCatalog.MoveRight.Name, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(selectedAction.Name, AnimationCatalog.MoveLeft.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            PlayAnimation(CreateRandomWalkAnimation());
+            return;
+        }
+
+        PlayAnimation(selectedAction);
+    }
+
+    private AnimationDefinition CreateRandomWalkAnimation()
+    {
+        var direction = ScreenService.GetInwardWalkDirection(
+            this,
+            _idleCharacterBounds,
+            _idleSpriteSize);
+        if (direction == 0) direction = Random.Shared.Next(2) == 0 ? -1 : 1;
+        var cycles = Random.Shared.Next(
+            AnimationCatalog.RandomWalkMinimumCycles,
+            AnimationCatalog.RandomWalkMaximumCycles + 1);
+        return direction > 0
+            ? AnimationCatalog.CreateRandomMoveRight(cycles)
+            : AnimationCatalog.CreateRandomMoveLeft(cycles);
     }
 
     private void OnLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -247,8 +303,8 @@ public partial class MainWindow : Window
         var direction = Math.Sign(horizontalOffset);
         if (direction == 0 || direction == _dragDirection) return;
         _dragDirection = direction;
-        if (_rightWalking) SavePosition();
-        _rightWalking = false;
+        if (_walkingDirection != 0) SavePosition();
+        _walkingDirection = 0;
         _player.ShowStaticFrame(direction < 0
             ? AnimationCatalog.DragLeftFrame
             : AnimationCatalog.DragRightFrame);
@@ -368,8 +424,7 @@ public partial class MainWindow : Window
         switch (kind)
         {
             case Views.SettingsChangeKind.Size:
-                ApplySize();
-                ScreenService.ClampToVisibleScreen(this);
+                ApplySize(preserveCharacterAnchor: true);
                 break;
             case Views.SettingsChangeKind.Startup:
                 StartupService.SetEnabled(_settings.StartWithWindows);
@@ -443,13 +498,20 @@ public partial class MainWindow : Window
 
     private void PlayAnimation(AnimationDefinition animation, bool repeat = false)
     {
-        var willWalkRight = string.Equals(
+        var walkingDirection = string.Equals(
             animation.Name,
             AnimationCatalog.MoveRight.Name,
-            StringComparison.OrdinalIgnoreCase);
-        if (_rightWalking && !willWalkRight) SavePosition();
-        _rightWalking = willWalkRight;
-        if (willWalkRight)
+            StringComparison.OrdinalIgnoreCase)
+            ? 1
+            : string.Equals(
+                animation.Name,
+                AnimationCatalog.MoveLeft.Name,
+                StringComparison.OrdinalIgnoreCase)
+                ? -1
+                : 0;
+        if (_walkingDirection != 0 && _walkingDirection != walkingDirection) SavePosition();
+        _walkingDirection = walkingDirection;
+        if (walkingDirection != 0)
         {
             _walkVerticalDirection = Random.Shared.Next(2) == 0 ? -1 : 1;
             _walkHorizontalRemainder = 0;
@@ -461,21 +523,42 @@ public partial class MainWindow : Window
     private void OnFrameChanged(System.Windows.Media.Imaging.BitmapSource bitmap)
     {
         SpriteImage.Source = bitmap;
-        if (!_rightWalking ||
-            !AnimationCatalog.IsMoveRightTravelFrame(_player.CurrentFrameIndex) ||
+        if (_walkingDirection == 0 ||
             _state is PetState.Hidden or PetState.SuspendedByFullscreen or PetState.Exiting)
         {
             return;
         }
 
         var radians = Math.PI / 6;
-        _walkHorizontalRemainder += WalkPixelsPerFrame * Math.Cos(radians);
+        _walkHorizontalRemainder += _walkingDirection * WalkPixelsPerFrame * Math.Cos(radians);
         _walkVerticalRemainder += _walkVerticalDirection * WalkPixelsPerFrame * Math.Sin(radians);
         var horizontalPixels = (int)Math.Truncate(_walkHorizontalRemainder);
         var verticalPixels = (int)Math.Truncate(_walkVerticalRemainder);
         _walkHorizontalRemainder -= horizontalPixels;
         _walkVerticalRemainder -= verticalPixels;
-        ScreenService.MoveWithinWorkArea(this, horizontalPixels, verticalPixels);
+        var movement = ScreenService.MoveWithinWorkArea(
+            this,
+            horizontalPixels,
+            verticalPixels,
+            _idleCharacterBounds,
+            _idleSpriteSize);
+        if (movement.ReachedEdge) ReturnToIdleAfterWalkingEdge();
+    }
+
+    private void ReturnToIdleAfterWalkingEdge()
+    {
+        if (_walkingDirection == 0) return;
+        _walkingDirection = 0;
+        _walkHorizontalRemainder = 0;
+        _walkVerticalRemainder = 0;
+        SavePosition();
+        if (_state == PetState.SettingsOpen)
+        {
+            ShowPausedIdleFrame();
+            return;
+        }
+
+        EnterIdle();
     }
 
     private void OnFullscreenChanged(bool fullscreen)
@@ -516,7 +599,7 @@ public partial class MainWindow : Window
             return new IntPtr(IsVisiblePixel(client) ? NativeMethods.HTCLIENT : NativeMethods.HTTRANSPARENT);
         }
 
-        if (msg == NativeMethods.WM_DPICHANGED) ApplySize();
+        if (msg == NativeMethods.WM_DPICHANGED) ApplySize(preserveCharacterAnchor: true);
         return IntPtr.Zero;
     }
 

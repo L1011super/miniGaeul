@@ -10,6 +10,7 @@ public sealed class SpriteAnimationPlayer
     private readonly AnimationFrameCache _cache;
     private readonly DispatcherTimer _timer;
     private AnimationDefinition? _animation;
+    private IReadOnlyList<TimeSpan>? _frameDurations;
     private int _frameIndex;
     private bool _repeatCurrentAnimation;
 
@@ -30,6 +31,7 @@ public sealed class SpriteAnimationPlayer
     {
         _animation = animation;
         _frameIndex = 0;
+        _frameDurations = animation.CreateFrameDurations();
         _repeatCurrentAnimation = repeat;
         ShowCurrentFrame();
         _timer.Start();
@@ -42,6 +44,7 @@ public sealed class SpriteAnimationPlayer
 
         _timer.Stop();
         _animation = null;
+        _frameDurations = null;
         _frameIndex = 0;
         _repeatCurrentAnimation = false;
         CurrentFrame = _cache.Get(Path.Combine(_assetRoot, fileName));
@@ -61,6 +64,7 @@ public sealed class SpriteAnimationPlayer
             if (_animation.Loop || _repeatCurrentAnimation)
             {
                 _frameIndex = 0;
+                _frameDurations = _animation.CreateFrameDurations();
             }
             else
             {
@@ -76,7 +80,7 @@ public sealed class SpriteAnimationPlayer
     private void ShowCurrentFrame()
     {
         if (_animation is null) return;
-        _timer.Interval = _animation.GetFrameDuration(_frameIndex);
+        _timer.Interval = _frameDurations?[_frameIndex] ?? _animation.GetFrameDuration(_frameIndex);
         var path = Path.Combine(_assetRoot, _animation.GetFrameRelativePath(_frameIndex));
         CurrentFrame = _cache.Get(path);
         FrameChanged?.Invoke(CurrentFrame);

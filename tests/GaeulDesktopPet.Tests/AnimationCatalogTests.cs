@@ -31,15 +31,22 @@ public sealed class AnimationCatalogTests
         Assert.AreEqual("01_gaeul_kitsch", AnimationCatalog.CharacterId);
         Assert.IsTrue(AnimationCatalog.Idle.Loop);
         Assert.AreEqual(8, AnimationCatalog.Interactions.Count);
-        Assert.AreEqual(9, AnimationCatalog.SettingsActions.Count);
+        Assert.AreEqual(10, AnimationCatalog.SettingsActions.Count);
         Assert.IsTrue(AnimationCatalog.Interactions.All(animation => !animation.Loop));
-        Assert.IsTrue(AnimationCatalog.All.All(animation => animation.Fps == 10));
-        Assert.AreEqual(138, AnimationCatalog.All.Sum(animation => animation.FrameCount));
+        Assert.AreEqual(15, AnimationCatalog.Idle.Fps);
+        Assert.IsTrue(AnimationCatalog.All.Where(animation => !ReferenceEquals(animation, AnimationCatalog.Idle))
+            .All(animation => animation.Fps == 10));
+        Assert.AreEqual(128, AnimationCatalog.All.Sum(animation => animation.FrameCount));
         Assert.AreEqual(16, AnimationCatalog.FindInteraction("interact_angry")?.FrameCount);
+        Assert.AreEqual(10, AnimationCatalog.FindInteraction("interact_wink")?.FrameCount);
+        Assert.IsNull(AnimationCatalog.FindInteraction("interact_arms_open"));
         CollectionAssert.AreEquivalent(
             new[] { "drag_left.png", "drag_right.png" },
             AnimationCatalog.StaticFrames.ToArray());
-        Assert.AreEqual(127, Directory.GetFiles(AssetRoot, "*.png", SearchOption.AllDirectories).Length);
+        Assert.AreEqual(122, Directory.GetFiles(AssetRoot, "*.png", SearchOption.AllDirectories).Length);
+        CollectionAssert.AreEquivalent(
+            AnimationCatalog.SettingsActions.Select(action => action.Name).ToArray(),
+            AnimationCatalog.RandomActions.Select(action => action.Name).ToArray());
     }
 
     [TestMethod]
@@ -54,35 +61,43 @@ public sealed class AnimationCatalogTests
     }
 
     [TestMethod]
-    public void Idle_static_frame_preserves_the_original_26_frame_hold()
+    public void Idle_blink_plays_at_fifteen_fps_with_configured_static_holds()
     {
-        Assert.AreEqual(TimeSpan.FromMilliseconds(2600), AnimationCatalog.Idle.GetFrameDuration(0));
-        for (var index = 1; index < AnimationCatalog.Idle.FrameCount; index++)
+        var random = new Random(20260817);
+        for (var cycle = 0; cycle < 50; cycle++)
         {
-            Assert.AreEqual(TimeSpan.FromMilliseconds(100), AnimationCatalog.Idle.GetFrameDuration(index));
+            var durations = AnimationCatalog.CreateIdleFrameDurations(random);
+            Assert.AreEqual(5, durations.Count);
+            Assert.IsTrue(durations[0] >= TimeSpan.FromMilliseconds(AnimationCatalog.IdleLeadingStaticMinimumMilliseconds));
+            Assert.IsTrue(durations[0] <= TimeSpan.FromMilliseconds(AnimationCatalog.IdleLeadingStaticMaximumMilliseconds));
+            for (var frame = 1; frame <= 3; frame++)
+            {
+                Assert.AreEqual(AnimationCatalog.IdleBlinkFrameDuration, durations[frame]);
+            }
+            Assert.AreEqual(AnimationCatalog.IdleTrailingStaticDuration, durations[4]);
         }
     }
 
     [TestMethod]
-    public void Move_right_wraps_two_walk_cycles_with_idle_transitions()
+    public void Move_right_plays_two_direct_walk_cycles()
     {
-        Assert.AreEqual(32, AnimationCatalog.MoveRight.FrameCount);
+        Assert.AreEqual(16, AnimationCatalog.MoveRight.FrameCount);
         Assert.IsFalse(AnimationCatalog.MoveRight.Loop);
         Assert.AreEqual(TimeSpan.FromMilliseconds(100), AnimationCatalog.MoveRight.GetFrameDuration(0));
         Assert.AreEqual(
-            Path.Combine("01_gaeul_move", "move_right_f013.png"),
+            Path.Combine("01_gaeul_move", "move_right_f000.png"),
             AnimationCatalog.MoveRight.GetFrameRelativePath(0));
         Assert.AreEqual(
-            Path.Combine("01_gaeul_move", "move_right_f000.png"),
-            AnimationCatalog.MoveRight.GetFrameRelativePath(3));
+            Path.Combine("01_gaeul_move", "move_right_f007.png"),
+            AnimationCatalog.MoveRight.GetFrameRelativePath(7));
         Assert.AreEqual(
-            AnimationCatalog.MoveRight.GetFrameRelativePath(3),
-            AnimationCatalog.MoveRight.GetFrameRelativePath(16));
+            AnimationCatalog.MoveRight.GetFrameRelativePath(0),
+            AnimationCatalog.MoveRight.GetFrameRelativePath(8));
         Assert.AreEqual(
-            Path.Combine("01_gaeul_move", "move_right_f018.png"),
-            AnimationCatalog.MoveRight.GetFrameRelativePath(31));
+            AnimationCatalog.MoveRight.GetFrameRelativePath(7),
+            AnimationCatalog.MoveRight.GetFrameRelativePath(15));
         CollectionAssert.AreEqual(
-            Enumerable.Range(3, 26).ToArray(),
+            Enumerable.Range(0, 16).ToArray(),
             Enumerable.Range(0, AnimationCatalog.MoveRight.FrameCount)
                 .Where(AnimationCatalog.IsMoveRightTravelFrame)
                 .ToArray());
@@ -90,6 +105,50 @@ public sealed class AnimationCatalogTests
             AnimationCatalog.MoveRight,
             AnimationCatalog.FindSettingsAction("MOVE_RIGHT"));
         Assert.IsNull(AnimationCatalog.FindInteraction("move_right"));
+    }
+
+    [TestMethod]
+    public void Move_left_plays_eight_direct_travel_frames_without_transition()
+    {
+        Assert.AreEqual(8, AnimationCatalog.MoveLeft.FrameCount);
+        Assert.IsFalse(AnimationCatalog.MoveLeft.Loop);
+        Assert.AreEqual(
+            Path.Combine("01_gaeul_mov2", "move_left_f000.png"),
+            AnimationCatalog.MoveLeft.GetFrameRelativePath(0));
+        Assert.AreEqual(
+            Path.Combine("01_gaeul_mov2", "move_left_f007.png"),
+            AnimationCatalog.MoveLeft.GetFrameRelativePath(7));
+        CollectionAssert.AreEqual(
+            Enumerable.Range(0, 8).ToArray(),
+            Enumerable.Range(0, AnimationCatalog.MoveLeft.FrameCount)
+                .Where(AnimationCatalog.IsMoveLeftTravelFrame)
+                .ToArray());
+        Assert.AreSame(
+            AnimationCatalog.MoveLeft,
+            AnimationCatalog.FindSettingsAction("MOVE_LEFT"));
+    }
+
+    [TestMethod]
+    public void Random_walks_use_one_through_four_complete_step_cycles()
+    {
+        for (var cycles = AnimationCatalog.RandomWalkMinimumCycles;
+             cycles <= AnimationCatalog.RandomWalkMaximumCycles;
+             cycles++)
+        {
+            var right = AnimationCatalog.CreateRandomMoveRight(cycles);
+            var left = AnimationCatalog.CreateRandomMoveLeft(cycles);
+
+            Assert.AreEqual(AnimationCatalog.MoveRightWalkFrameCount * cycles, right.FrameCount);
+            Assert.AreEqual(AnimationCatalog.MoveLeftWalkFrameCount * cycles, left.FrameCount);
+            if (cycles > 1)
+            {
+                Assert.AreEqual(right.GetFrameRelativePath(0), right.GetFrameRelativePath(AnimationCatalog.MoveRightWalkFrameCount));
+                Assert.AreEqual(left.GetFrameRelativePath(0), left.GetFrameRelativePath(AnimationCatalog.MoveLeftWalkFrameCount));
+            }
+        }
+
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => AnimationCatalog.CreateRandomMoveRight(0));
+        Assert.ThrowsException<ArgumentOutOfRangeException>(() => AnimationCatalog.CreateRandomMoveLeft(5));
     }
 
     [TestMethod]
@@ -105,6 +164,29 @@ public sealed class AnimationCatalogTests
     }
 
     [TestMethod]
+    public void Wink_repeats_the_hold_frame_four_times_before_returning_to_idle()
+    {
+        var wink = AnimationCatalog.FindInteraction("interact_wink");
+        Assert.IsNotNull(wink);
+        Assert.AreEqual(10, wink.FrameCount);
+        Assert.AreEqual("interact_wink_f000.png", wink.GetFrameFileName(0));
+        Assert.AreEqual("interact_wink_f009.png", wink.GetFrameFileName(9));
+
+        for (var index = 0; index < wink.FrameCount; index++)
+        {
+            Assert.IsTrue(File.Exists(Path.Combine(AssetRoot, wink.GetFrameFileName(index))));
+        }
+
+        var holdFrame = File.ReadAllBytes(Path.Combine(AssetRoot, "interact_wink_f003.png"));
+        for (var index = 4; index <= 6; index++)
+        {
+            CollectionAssert.AreEqual(holdFrame,
+                File.ReadAllBytes(Path.Combine(AssetRoot, $"interact_wink_f{index:D3}.png")));
+        }
+
+    }
+
+    [TestMethod]
     public void Interaction_lookup_excludes_idle_and_resolves_known_actions()
     {
         Assert.IsNull(AnimationCatalog.FindInteraction(AnimationCatalog.Idle.Name));
@@ -112,6 +194,10 @@ public sealed class AnimationCatalogTests
         Assert.AreEqual(
             "interact_wave",
             AnimationCatalog.FindInteraction("INTERACT_WAVE")?.Name);
+        Assert.AreSame(
+            AnimationCatalog.FindInteraction("interact_wink"),
+            AnimationCatalog.FindSettingsAction("interact_wink"));
+        Assert.IsNull(AnimationCatalog.FindSettingsAction("interact_arms_open"));
     }
 
     [TestMethod]
@@ -123,6 +209,11 @@ public sealed class AnimationCatalogTests
         Assert.AreEqual("Indexed8", bitmap.Format.ToString());
         Assert.AreEqual(0, cache.GetAlpha(bitmap, 0, 0));
         Assert.IsTrue(cache.GetAlpha(bitmap, 300, 300) >= 15);
+        var bodyBounds = cache.GetOpaqueBounds(bitmap);
+        Assert.AreEqual(241, bodyBounds.Left, 0.001);
+        Assert.AreEqual(200, bodyBounds.Top, 0.001);
+        Assert.AreEqual(114, bodyBounds.Width, 0.001);
+        Assert.AreEqual(300, bodyBounds.Height, 0.001);
     }
 
     [TestMethod]

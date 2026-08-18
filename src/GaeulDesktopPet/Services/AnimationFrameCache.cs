@@ -1,5 +1,6 @@
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using WpfRect = System.Windows.Rect;
 
 namespace GaeulDesktopPet.Services;
 
@@ -50,6 +51,35 @@ public sealed class AnimationFrameCache
         }
 
         return plane.Values[y * plane.Width + x];
+    }
+
+    public WpfRect GetOpaqueBounds(BitmapSource bitmap, byte minimumAlpha = 15)
+    {
+        if (!_alphaPlanes.TryGetValue(bitmap, out var plane))
+        {
+            plane = CreateAlphaPlane(bitmap);
+            _alphaPlanes[bitmap] = plane;
+        }
+
+        var left = plane.Width;
+        var top = bitmap.PixelHeight;
+        var right = -1;
+        var bottom = -1;
+        for (var y = 0; y < bitmap.PixelHeight; y++)
+        {
+            for (var x = 0; x < plane.Width; x++)
+            {
+                if (plane.Values[y * plane.Width + x] < minimumAlpha) continue;
+                left = Math.Min(left, x);
+                top = Math.Min(top, y);
+                right = Math.Max(right, x);
+                bottom = Math.Max(bottom, y);
+            }
+        }
+
+        return right < left || bottom < top
+            ? WpfRect.Empty
+            : new WpfRect(left, top, right - left + 1, bottom - top + 1);
     }
 
     private static AlphaPlane CreateAlphaPlane(BitmapSource bitmap)

@@ -36,7 +36,7 @@
 
       <TextBlock Text="显示大小" />
       <Slider x:Name="ScaleSlider"
-              Minimum="0.75" Maximum="5.0"
+              Minimum="0.75" Maximum="2.5"
               TickFrequency="0.05" IsSnapToTickEnabled="True" />
       <Button Content="恢复默认大小" Margin="0,8,0,12" Click="OnDefaultSize" />
 

@@ -7,7 +7,8 @@ public sealed record AnimationDefinition(
     int FrameCount,
     IReadOnlyList<int>? SourceFrameIndices = null,
     IReadOnlyList<int>? FrameHoldCounts = null,
-    string? AssetDirectory = null)
+    string? AssetDirectory = null,
+    Func<IReadOnlyList<TimeSpan>>? FrameDurationFactory = null)
 {
     public string GetFrameFileName(int index)
     {
@@ -28,6 +29,20 @@ public sealed record AnimationDefinition(
         ValidateCustomFrames();
         var holdCount = FrameHoldCounts?[index] ?? 1;
         return TimeSpan.FromMilliseconds(1000.0 * holdCount / Fps);
+    }
+
+    public IReadOnlyList<TimeSpan> CreateFrameDurations()
+    {
+        ValidateCustomFrames();
+        var durations = FrameDurationFactory?.Invoke()
+            ?? Enumerable.Range(0, FrameCount).Select(GetFrameDuration).ToArray();
+
+        if (durations.Count != FrameCount || durations.Any(duration => duration <= TimeSpan.Zero))
+        {
+            throw new InvalidOperationException("Frame duration factory must return one positive duration per frame.");
+        }
+
+        return durations;
     }
 
     private void ValidateCustomFrames()

@@ -58,6 +58,8 @@ public sealed class SchedulerAndSettingsTests
         };
         settings.Validate();
         Assert.AreEqual(PetSettings.MaximumSizeScale, settings.SizeScale);
+        Assert.AreEqual(2.5, PetSettings.MaximumSizeScale, 0.001);
+        Assert.AreEqual(1.75, PetSettings.DefaultSizeScale, 0.001);
         Assert.AreEqual(InteractionFrequencyLevel.Often, settings.InteractionFrequency);
         Assert.IsFalse(settings.ContinuousActionEnabled);
     }
@@ -321,5 +323,79 @@ public sealed class SchedulerAndSettingsTests
 
         Assert.AreEqual(12, upward.Y);
         Assert.AreEqual(748, downward.Y);
+    }
+
+    [TestMethod]
+    public void Idle_character_bounds_scale_with_the_window_size()
+    {
+        var bounds = ScreenService.ScaleSpriteBounds(
+            new WpfRect(241, 200, 114, 300),
+            new WpfSize(600, 600),
+            new WpfSize(300, 300));
+
+        Assert.AreEqual(120.5, bounds.Left, 0.001);
+        Assert.AreEqual(100, bounds.Top, 0.001);
+        Assert.AreEqual(57, bounds.Width, 0.001);
+        Assert.AreEqual(150, bounds.Height, 0.001);
+    }
+
+    [TestMethod]
+    public void Scaling_keeps_the_character_center_and_canvas_bottom_anchor_fixed()
+    {
+        var spriteBounds = new WpfRect(241, 200, 114, 300);
+        var spriteSize = new WpfSize(600, 600);
+        var originalWindow = new WpfRect(100, 200, 300, 300);
+        var anchor = ScreenService.CalculateCharacterAnchor(originalWindow, spriteBounds, spriteSize);
+        var resizedPosition = ScreenService.CalculateWindowPositionForCharacterAnchor(
+            anchor,
+            spriteBounds,
+            spriteSize,
+            new WpfSize(600, 600));
+        var resizedWindow = new WpfRect(resizedPosition, new WpfSize(600, 600));
+
+        var resizedAnchor = ScreenService.CalculateCharacterAnchor(resizedWindow, spriteBounds, spriteSize);
+        Assert.AreEqual(anchor.X, resizedAnchor.X, 0.001);
+        Assert.AreEqual(anchor.Y, resizedAnchor.Y, 0.001);
+        Assert.AreEqual(500, anchor.Y, 0.001);
+    }
+
+    [TestMethod]
+    public void Walk_boundary_uses_character_bounds_instead_of_transparent_window_padding()
+    {
+        var position = ScreenService.CalculateMovementPosition(
+            new WpfRect(1600, 200, 300, 300),
+            new WpfRect(120.5, 100, 57, 150),
+            new WpfRect(0, 0, 1920, 1080),
+            100,
+            0,
+            12);
+
+        Assert.AreEqual(1700, position.X, 0.001);
+        Assert.AreEqual(200, position.Y, 0.001);
+    }
+
+    [TestMethod]
+    public void Edge_positions_force_the_next_walk_toward_the_screen_interior()
+    {
+        var workArea = new WpfRect(0, 0, 1920, 1080);
+        var characterBounds = new WpfRect(120.5, 100, 57, 150);
+        var leftDirection = ScreenService.GetInwardWalkDirection(
+            new WpfRect(-108.5, 200, 300, 300),
+            characterBounds,
+            workArea,
+            12);
+        var rightDirection = ScreenService.GetInwardWalkDirection(
+            new WpfRect(1850.5, 200, 300, 300),
+            characterBounds,
+            workArea,
+            12);
+
+        Assert.AreEqual(1, leftDirection);
+        Assert.AreEqual(-1, rightDirection);
+        Assert.IsTrue(ScreenService.HasReachedWorkAreaEdge(
+            new WpfRect(1850.5, 200, 300, 300),
+            characterBounds,
+            workArea,
+            12));
     }
 }

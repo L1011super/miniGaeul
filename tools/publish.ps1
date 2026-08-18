@@ -22,7 +22,7 @@ dotnet publish src/GaeulDesktopPet/GaeulDesktopPet.csproj `
 $assetRoot = Join-Path $out "Assets/Sprites/01_gaeul_kitsch"
 if (-not (Test-Path $assetRoot)) { throw "Runtime animation directory is missing" }
 $pngCount = (Get-ChildItem -LiteralPath $assetRoot -Recurse -File -Filter *.png).Count
-if ($pngCount -ne 127) { throw "Expected 127 runtime PNG frames, found $pngCount" }
+if ($pngCount -ne 122) { throw "Expected 122 runtime PNG frames, found $pngCount" }
 
 $zip = "dist/GaeulDesktopPet-win-x64.zip"
 if (Test-Path $zip) { Remove-Item -Force $zip }

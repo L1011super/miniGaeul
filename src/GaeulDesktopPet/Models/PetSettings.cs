@@ -12,11 +12,12 @@ public enum InteractionFrequencyLevel
 public sealed class PetSettings
 {
     public const double MinimumSizeScale = 0.75;
-    public const double MaximumSizeScale = 5.0;
+    public const double MaximumSizeScale = 2.5;
+    public const double DefaultSizeScale = MaximumSizeScale * 0.7;
 
     public double? Left { get; set; }
     public double? Top { get; set; }
-    public double SizeScale { get; set; } = 1.0;
+    public double SizeScale { get; set; } = DefaultSizeScale;
     public InteractionFrequencyLevel InteractionFrequency { get; set; } = InteractionFrequencyLevel.Often;
     public bool StartWithWindows { get; set; }
     public bool SuppressInFullscreen { get; set; } = true;

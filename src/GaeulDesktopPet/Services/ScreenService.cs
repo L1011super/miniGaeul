@@ -8,6 +8,8 @@ using WpfSize = System.Windows.Size;
 
 namespace GaeulDesktopPet.Services;
 
+public readonly record struct WorkAreaMovementResult(bool Moved, bool ReachedEdge);
+
 public static class ScreenService
 {
     public static double CalculateDefaultPetDipSize(Window window, double scale)
@@ -35,10 +37,12 @@ public static class ScreenService
         window.Top = Math.Clamp(window.Top, area.Top - window.Height + 48, area.Bottom - 48);
     }
 
-    public static bool MoveWithinWorkArea(
+    public static WorkAreaMovementResult MoveWithinWorkArea(
         Window window,
         int horizontalPixels,
         int verticalPixels,
+        WpfRect characterBoundsInSprite,
+        WpfSize spriteSize,
         int edgeMarginPixels = 12)
     {
         var handle = new WindowInteropHelper(window).Handle;
@@ -46,23 +50,34 @@ public static class ScreenService
             !NativeMethods.GetWindowRect(handle, out var bounds) ||
             bounds.Width <= 0)
         {
-            return false;
+            return new WorkAreaMovementResult(false, false);
         }
 
         var workArea = Forms.Screen.FromHandle(handle).WorkingArea;
+        var windowBounds = new WpfRect(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
+        var characterBoundsInWindow = ScaleSpriteBounds(
+            characterBoundsInSprite,
+            spriteSize,
+            windowBounds.Size);
         var nextPosition = CalculateMovementPosition(
-            new WpfRect(bounds.Left, bounds.Top, bounds.Width, bounds.Height),
+            windowBounds,
+            characterBoundsInWindow,
             new WpfRect(workArea.Left, workArea.Top, workArea.Width, workArea.Height),
             horizontalPixels,
             verticalPixels,
             edgeMarginPixels);
+        var reachedEdge = HasReachedWorkAreaEdge(
+            new WpfRect(nextPosition, windowBounds.Size),
+            characterBoundsInWindow,
+            new WpfRect(workArea.Left, workArea.Top, workArea.Width, workArea.Height),
+            edgeMarginPixels);
         if (Math.Abs(nextPosition.X - bounds.Left) < 0.001 &&
             Math.Abs(nextPosition.Y - bounds.Top) < 0.001)
         {
-            return false;
+            return new WorkAreaMovementResult(false, reachedEdge);
         }
 
-        return NativeMethods.SetWindowPos(
+        var moved = NativeMethods.SetWindowPos(
             handle,
             IntPtr.Zero,
             (int)Math.Round(nextPosition.X),
@@ -72,6 +87,7 @@ public static class ScreenService
             NativeMethods.SWP_NOSIZE |
             NativeMethods.SWP_NOZORDER |
             NativeMethods.SWP_NOACTIVATE);
+        return new WorkAreaMovementResult(moved, moved && reachedEdge);
     }
 
     public static WpfPoint CalculateMovementPosition(
@@ -89,6 +105,137 @@ public static class ScreenService
         return new WpfPoint(
             Math.Clamp(windowBounds.Left + horizontalDistance, minimumLeft, maximumLeft),
             Math.Clamp(windowBounds.Top + verticalDistance, minimumTop, maximumTop));
+    }
+
+    public static WpfPoint CalculateMovementPosition(
+        WpfRect windowBounds,
+        WpfRect characterBoundsInWindow,
+        WpfRect workArea,
+        double horizontalDistance,
+        double verticalDistance,
+        double edgeMargin)
+    {
+        var margin = Math.Max(0, edgeMargin);
+        var characterLeft = windowBounds.Left + characterBoundsInWindow.Left;
+        var characterTop = windowBounds.Top + characterBoundsInWindow.Top;
+        var minimumCharacterLeft = workArea.Left + margin;
+        var maximumCharacterLeft = Math.Max(
+            minimumCharacterLeft,
+            workArea.Right - margin - characterBoundsInWindow.Width);
+        var minimumCharacterTop = workArea.Top + margin;
+        var maximumCharacterTop = Math.Max(
+            minimumCharacterTop,
+            workArea.Bottom - margin - characterBoundsInWindow.Height);
+        var nextCharacterLeft = Math.Clamp(
+            characterLeft + horizontalDistance,
+            minimumCharacterLeft,
+            maximumCharacterLeft);
+        var nextCharacterTop = Math.Clamp(
+            characterTop + verticalDistance,
+            minimumCharacterTop,
+            maximumCharacterTop);
+        return new WpfPoint(
+            windowBounds.Left + nextCharacterLeft - characterLeft,
+            windowBounds.Top + nextCharacterTop - characterTop);
+    }
+
+    public static WpfRect ScaleSpriteBounds(
+        WpfRect spriteBounds,
+        WpfSize spriteSize,
+        WpfSize targetSize)
+    {
+        if (spriteSize.Width <= 0 || spriteSize.Height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(spriteSize));
+        }
+
+        return new WpfRect(
+            spriteBounds.Left * targetSize.Width / spriteSize.Width,
+            spriteBounds.Top * targetSize.Height / spriteSize.Height,
+            spriteBounds.Width * targetSize.Width / spriteSize.Width,
+            spriteBounds.Height * targetSize.Height / spriteSize.Height);
+    }
+
+    public static WpfPoint CalculateCharacterAnchor(
+        WpfRect windowBounds,
+        WpfRect characterBoundsInSprite,
+        WpfSize spriteSize)
+    {
+        var characterBounds = ScaleSpriteBounds(characterBoundsInSprite, spriteSize, windowBounds.Size);
+        return new WpfPoint(
+            windowBounds.Left + characterBounds.Left + characterBounds.Width / 2,
+            windowBounds.Bottom);
+    }
+
+    public static WpfPoint CalculateWindowPositionForCharacterAnchor(
+        WpfPoint characterAnchor,
+        WpfRect characterBoundsInSprite,
+        WpfSize spriteSize,
+        WpfSize targetSize)
+    {
+        var characterBounds = ScaleSpriteBounds(characterBoundsInSprite, spriteSize, targetSize);
+        return new WpfPoint(
+            characterAnchor.X - characterBounds.Left - characterBounds.Width / 2,
+            characterAnchor.Y - targetSize.Height);
+    }
+
+    public static int GetInwardWalkDirection(
+        Window window,
+        WpfRect characterBoundsInSprite,
+        WpfSize spriteSize,
+        int edgeMarginPixels = 12)
+    {
+        var handle = new WindowInteropHelper(window).Handle;
+        if (handle == IntPtr.Zero ||
+            !NativeMethods.GetWindowRect(handle, out var bounds) ||
+            bounds.Width <= 0 ||
+            bounds.Height <= 0)
+        {
+            return 0;
+        }
+
+        var windowBounds = new WpfRect(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
+        var characterBoundsInWindow = ScaleSpriteBounds(
+            characterBoundsInSprite,
+            spriteSize,
+            windowBounds.Size);
+        var workArea = Forms.Screen.FromHandle(handle).WorkingArea;
+        return GetInwardWalkDirection(
+            windowBounds,
+            characterBoundsInWindow,
+            new WpfRect(workArea.Left, workArea.Top, workArea.Width, workArea.Height),
+            edgeMarginPixels);
+    }
+
+    public static int GetInwardWalkDirection(
+        WpfRect windowBounds,
+        WpfRect characterBoundsInWindow,
+        WpfRect workArea,
+        double edgeMargin)
+    {
+        var margin = Math.Max(0, edgeMargin);
+        var characterLeft = windowBounds.Left + characterBoundsInWindow.Left;
+        var characterRight = characterLeft + characterBoundsInWindow.Width;
+        if (characterLeft <= workArea.Left + margin + 0.001) return 1;
+        if (characterRight >= workArea.Right - margin - 0.001) return -1;
+        return 0;
+    }
+
+    public static bool HasReachedWorkAreaEdge(
+        WpfRect windowBounds,
+        WpfRect characterBoundsInWindow,
+        WpfRect workArea,
+        double edgeMargin)
+    {
+        var margin = Math.Max(0, edgeMargin);
+        var characterLeft = windowBounds.Left + characterBoundsInWindow.Left;
+        var characterTop = windowBounds.Top + characterBoundsInWindow.Top;
+        var characterRight = characterLeft + characterBoundsInWindow.Width;
+        var characterBottom = characterTop + characterBoundsInWindow.Height;
+        return characterLeft <= workArea.Left + margin + 0.001 ||
+               characterRight >= workArea.Right - margin - 0.001 ||
+               characterTop <= workArea.Top + margin + 0.001 ||
+               characterBottom >= workArea.Bottom - margin - 0.001;
     }
 
     public static void PlaceAdjacent(Window window, Window anchor, int gapPixels = 100)

@@ -162,7 +162,7 @@ public partial class SettingsWindow : Window
     private void RaiseSettingsChanged(SettingsChangeKind kind) =>
         SettingsChanged?.Invoke(this, new SettingsChangedEventArgs(kind));
 
-    private void OnDefaultSize(object sender, RoutedEventArgs e) => ScaleSlider.Value = 1.0;
+    private void OnDefaultSize(object sender, RoutedEventArgs e) => ScaleSlider.Value = PetSettings.DefaultSizeScale;
 
     private void OnResetPosition(object sender, RoutedEventArgs e)
     {
@@ -190,10 +190,11 @@ public partial class SettingsWindow : Window
         "interact_wave" => "挥手",
         "interact_happy_jump" => "开心跳跃",
         "interact_hands_clasp" => "双手相握",
-        "interact_arms_open" => "张开双臂",
+        "interact_wink" => "wink",
         "interact_clasp_sway" => "合手摇摆",
         "interact_arms_crossed" => "双臂交叉",
         "move_right" => "向右走",
+        "move_left" => "向左走",
         _ => name
     };
 

@@ -16,7 +16,7 @@ public sealed class RandomActionScheduler : IDisposable
             InteractionFrequencyLevel.Occasional => TimeSpan.FromMinutes(20),
             InteractionFrequencyLevel.Often => TimeSpan.FromMinutes(5),
             InteractionFrequencyLevel.Frequent => TimeSpan.FromMinutes(1),
-            InteractionFrequencyLevel.Continuous => TimeSpan.FromSeconds(4),
+            InteractionFrequencyLevel.Continuous => TimeSpan.FromSeconds(3),
             _ => TimeSpan.FromMinutes(5)
         };
     }
